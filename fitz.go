@@ -36,8 +36,8 @@ var (
 
 // Document represents fitz document.
 type Document struct {
-	ctx *C.struct_fz_context_s
-	doc *C.struct_fz_document_s
+	ctx *C.struct_fz_context
+	doc *C.struct_fz_document
 	mtx sync.Mutex
 }
 
@@ -69,7 +69,7 @@ func New(filename string) (f *Document, err error) {
 		return
 	}
 
-	f.ctx = (*C.struct_fz_context_s)(unsafe.Pointer(C.fz_new_context_imp(nil, nil, C.FZ_STORE_UNLIMITED, C.fz_version)))
+	f.ctx = (*C.struct_fz_context)(unsafe.Pointer(C.fz_new_context_imp(nil, nil, C.FZ_STORE_UNLIMITED, C.fz_version)))
 	if f.ctx == nil {
 		err = ErrCreateContext
 		return
@@ -99,7 +99,7 @@ func New(filename string) (f *Document, err error) {
 func NewFromMemory(b []byte) (f *Document, err error) {
 	f = &Document{}
 
-	f.ctx = (*C.struct_fz_context_s)(unsafe.Pointer(C.fz_new_context_imp(nil, nil, C.FZ_STORE_UNLIMITED, C.fz_version)))
+	f.ctx = (*C.struct_fz_context)(unsafe.Pointer(C.fz_new_context_imp(nil, nil, C.FZ_STORE_UNLIMITED, C.fz_version)))
 	if f.ctx == nil {
 		err = ErrCreateContext
 		return
@@ -175,17 +175,17 @@ func (f *Document) ImageDPI(pageNumber int, dpi float64) (image.Image, error) {
 	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
 	defer C.fz_drop_page(f.ctx, page)
 
-	var bounds C.fz_rect
-	C.fz_bound_page(f.ctx, page, &bounds)
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
 
 	var ctm C.fz_matrix
-	C.fz_scale(&ctm, C.float(dpi/72), C.float(dpi/72))
+	ctm = C.fz_scale(C.float(dpi/72), C.float(dpi/72))
 
 	var bbox C.fz_irect
-	C.fz_transform_rect(&bounds, &ctm)
-	C.fz_round_rect(&bbox, &bounds)
+	rect = C.fz_transform_rect(rect, ctm)
+	bbox = C.fz_round_rect(rect)
 
-	pixmap := C.fz_new_pixmap_with_bbox(f.ctx, C.fz_device_rgb(f.ctx), &bbox, nil, 1)
+	pixmap := C.fz_new_pixmap_with_bbox(f.ctx, C.fz_device_rgb(f.ctx), bbox, nil, 1)
 	if pixmap == nil {
 		return nil, ErrCreatePixmap
 	}
@@ -193,12 +193,12 @@ func (f *Document) ImageDPI(pageNumber int, dpi float64) (image.Image, error) {
 	C.fz_clear_pixmap_with_value(f.ctx, pixmap, C.int(0xff))
 	defer C.fz_drop_pixmap(f.ctx, pixmap)
 
-	device := C.fz_new_draw_device(f.ctx, &ctm, pixmap)
+	device := C.fz_new_draw_device(f.ctx, ctm, pixmap)
 	C.fz_enable_device_hints(f.ctx, device, C.FZ_NO_CACHE)
 	defer C.fz_drop_device(f.ctx, device)
 
 	drawMatrix := C.fz_identity
-	C.fz_run_page(f.ctx, page, device, &drawMatrix, nil)
+	C.fz_run_page(f.ctx, page, device, drawMatrix, nil)
 
 	C.fz_close_device(f.ctx, device)
 
@@ -226,17 +226,17 @@ func (f *Document) ImagePNG(pageNumber int, dpi float64) ([]byte, error) {
 	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
 	defer C.fz_drop_page(f.ctx, page)
 
-	var bounds C.fz_rect
-	C.fz_bound_page(f.ctx, page, &bounds)
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
 
 	var ctm C.fz_matrix
-	C.fz_scale(&ctm, C.float(dpi/72), C.float(dpi/72))
+	ctm = C.fz_scale(C.float(dpi/72), C.float(dpi/72))
 
 	var bbox C.fz_irect
-	C.fz_transform_rect(&bounds, &ctm)
-	C.fz_round_rect(&bbox, &bounds)
+	rect = C.fz_transform_rect(rect, ctm)
+	bbox = C.fz_round_rect(rect)
 
-	pixmap := C.fz_new_pixmap_with_bbox(f.ctx, C.fz_device_rgb(f.ctx), &bbox, nil, 1)
+	pixmap := C.fz_new_pixmap_with_bbox(f.ctx, C.fz_device_rgb(f.ctx), bbox, nil, 1)
 	if pixmap == nil {
 		return nil, ErrCreatePixmap
 	}
@@ -244,16 +244,16 @@ func (f *Document) ImagePNG(pageNumber int, dpi float64) ([]byte, error) {
 	C.fz_clear_pixmap_with_value(f.ctx, pixmap, C.int(0xff))
 	defer C.fz_drop_pixmap(f.ctx, pixmap)
 
-	device := C.fz_new_draw_device(f.ctx, &ctm, pixmap)
+	device := C.fz_new_draw_device(f.ctx, ctm, pixmap)
 	C.fz_enable_device_hints(f.ctx, device, C.FZ_NO_CACHE)
 	defer C.fz_drop_device(f.ctx, device)
 
 	drawMatrix := C.fz_identity
-	C.fz_run_page(f.ctx, page, device, &drawMatrix, nil)
+	C.fz_run_page(f.ctx, page, device, drawMatrix, nil)
 
 	C.fz_close_device(f.ctx, device)
 
-	buf := C.fz_new_buffer_from_pixmap_as_png(f.ctx, pixmap, nil)
+	buf := C.fz_new_buffer_from_pixmap_as_png(f.ctx, pixmap, C.fz_default_color_params)
 	defer C.fz_drop_buffer(f.ctx, buf)
 
 	size := C.fz_buffer_storage(f.ctx, buf, nil)
@@ -274,13 +274,13 @@ func (f *Document) Text(pageNumber int) (string, error) {
 	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
 	defer C.fz_drop_page(f.ctx, page)
 
-	var bounds C.fz_rect
-	C.fz_bound_page(f.ctx, page, &bounds)
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
 
 	var ctm C.fz_matrix
-	C.fz_scale(&ctm, C.float(72.0/72), C.float(72.0/72))
+	ctm = C.fz_scale(C.float(72.0/72), C.float(72.0/72))
 
-	text := C.fz_new_stext_page(f.ctx, &bounds)
+	text := C.fz_new_stext_page(f.ctx, rect)
 	defer C.fz_drop_stext_page(f.ctx, text)
 
 	var opts C.fz_stext_options
@@ -291,7 +291,7 @@ func (f *Document) Text(pageNumber int) (string, error) {
 	defer C.fz_drop_device(f.ctx, device)
 
 	var cookie C.fz_cookie
-	C.fz_run_page(f.ctx, page, device, &ctm, &cookie)
+	C.fz_run_page(f.ctx, page, device, ctm, &cookie)
 
 	C.fz_close_device(f.ctx, device)
 
@@ -315,13 +315,13 @@ func (f *Document) HTML(pageNumber int, header bool) (string, error) {
 	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
 	defer C.fz_drop_page(f.ctx, page)
 
-	var bounds C.fz_rect
-	C.fz_bound_page(f.ctx, page, &bounds)
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
 
 	var ctm C.fz_matrix
-	C.fz_scale(&ctm, C.float(72.0/72), C.float(72.0/72))
+	ctm = C.fz_scale(C.float(72.0/72), C.float(72.0/72))
 
-	text := C.fz_new_stext_page(f.ctx, &bounds)
+	text := C.fz_new_stext_page(f.ctx, rect)
 	defer C.fz_drop_stext_page(f.ctx, text)
 
 	var opts C.fz_stext_options
@@ -332,7 +332,7 @@ func (f *Document) HTML(pageNumber int, header bool) (string, error) {
 	defer C.fz_drop_device(f.ctx, device)
 
 	var cookie C.fz_cookie
-	C.fz_run_page(f.ctx, page, device, &ctm, &cookie)
+	C.fz_run_page(f.ctx, page, device, ctm, &cookie)
 
 	C.fz_close_device(f.ctx, device)
 
@@ -345,7 +345,7 @@ func (f *Document) HTML(pageNumber int, header bool) (string, error) {
 	if header {
 		C.fz_print_stext_header_as_html(f.ctx, out)
 	}
-	C.fz_print_stext_page_as_html(f.ctx, out, text)
+	C.fz_print_stext_page_as_html(f.ctx, out, text, C.int(pageNumber))
 	if header {
 		C.fz_print_stext_trailer_as_html(f.ctx, out)
 	}
@@ -367,12 +367,12 @@ func (f *Document) SVG(pageNumber int) (string, error) {
 	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
 	defer C.fz_drop_page(f.ctx, page)
 
-	var bounds C.fz_rect
-	C.fz_bound_page(f.ctx, page, &bounds)
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
 
 	var ctm C.fz_matrix
-	C.fz_scale(&ctm, C.float(72.0/72), C.float(72.0/72))
-	C.fz_transform_rect(&bounds, &ctm)
+	ctm = C.fz_scale(C.float(72.0/72), C.float(72.0/72))
+	rect = C.fz_transform_rect(rect, ctm)
 
 	buf := C.fz_new_buffer(f.ctx, 1024)
 	defer C.fz_drop_buffer(f.ctx, buf)
@@ -380,12 +380,12 @@ func (f *Document) SVG(pageNumber int) (string, error) {
 	out := C.fz_new_output_with_buffer(f.ctx, buf)
 	defer C.fz_drop_output(f.ctx, out)
 
-	device := C.fz_new_svg_device(f.ctx, out, bounds.x1-bounds.x0, bounds.y1-bounds.y0, C.FZ_SVG_TEXT_AS_PATH, 1)
+	device := C.fz_new_svg_device(f.ctx, out, rect.x1-rect.x0, rect.y1-rect.y0, C.FZ_SVG_TEXT_AS_PATH, 1)
 	C.fz_enable_device_hints(f.ctx, device, C.FZ_NO_CACHE)
 	defer C.fz_drop_device(f.ctx, device)
 
 	var cookie C.fz_cookie
-	C.fz_run_page(f.ctx, page, device, &ctm, &cookie)
+	C.fz_run_page(f.ctx, page, device, ctm, &cookie)
 
 	C.fz_close_device(f.ctx, device)
 
