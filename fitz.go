@@ -262,6 +262,53 @@ func (f *Document) ImagePNG(pageNumber int, dpi float64) ([]byte, error) {
 	return []byte(str), nil
 }
 
+// ImagePNG1 returns image for given page number as PNG bytes.
+func (f *Document) ImagePNG1(pageNumber int, dpi float64) ([]byte, error) {
+	if pageNumber >= f.NumPage() {
+		return nil, ErrPageMissing
+	}
+
+	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
+	defer C.fz_drop_page(f.ctx, page)
+
+	var rect C.fz_rect
+	rect = C.fz_bound_page(f.ctx, page)
+
+	var ctm C.fz_matrix
+	ctm = C.fz_scale(C.float(dpi/72), C.float(dpi/72))
+
+	var bbox C.fz_irect
+	rect = C.fz_transform_rect(rect, ctm)
+	bbox = C.fz_round_rect(rect)
+
+	pixmap := C.fz_new_pixmap_with_bbox(f.ctx, C.fz_device_rgb(f.ctx), bbox, nil, 1)
+	if pixmap == nil {
+		return nil, ErrCreatePixmap
+	}
+
+	C.fz_clear_pixmap_with_value(f.ctx, pixmap, C.int(0xff))
+	defer C.fz_drop_pixmap(f.ctx, pixmap)
+
+	device := C.fz_new_draw_device(f.ctx, ctm, pixmap)
+	C.fz_enable_device_hints(f.ctx, device, C.FZ_NO_CACHE)
+	defer C.fz_drop_device(f.ctx, device)
+
+	drawMatrix := C.fz_identity
+	f.mtx.Lock()
+	C.fz_run_page(f.ctx, page, device, drawMatrix, nil)
+	f.mtx.Unlock()
+
+	C.fz_close_device(f.ctx, device)
+
+	buf := C.fz_new_buffer_from_pixmap_as_png(f.ctx, pixmap, C.fz_default_color_params)
+	defer C.fz_drop_buffer(f.ctx, buf)
+
+	size := C.fz_buffer_storage(f.ctx, buf, nil)
+	str := C.GoStringN(C.fz_string_from_buffer(f.ctx, buf), C.int(size))
+
+	return []byte(str), nil
+}
+
 // Text returns text for given page number.
 func (f *Document) Text(pageNumber int) (string, error) {
 	f.mtx.Lock()
