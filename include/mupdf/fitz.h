@@ -56,6 +56,7 @@ extern "C" {
 #include "mupdf/fitz/document.h"
 
 #include "mupdf/fitz/util.h"
+#include "mupdf/fitz/multi-thread-convert.h"
 
 /* Output formats */
 #include "mupdf/fitz/writer.h"

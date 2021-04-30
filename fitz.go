@@ -41,6 +41,12 @@ type Document struct {
 	mtx sync.Mutex
 }
 
+type PNGOutput struct {
+	PNGBytes  **C.Char
+	PageCount C.int
+	Err       *C.Char
+}
+
 // Outline type.
 type Outline struct {
 	// Hierarchy level of the entry (starting from 1).
@@ -260,6 +266,16 @@ func (f *Document) ImagePNG(pageNumber int, dpi float64) ([]byte, error) {
 	str := C.GoStringN(C.fz_string_from_buffer(f.ctx, buf), C.int(size))
 
 	return []byte(str), nil
+}
+
+// ConvertPNGsMultiThread returns images of each pages for given pdf and DPI.
+func ConvertPNGsMultiThread(input []byte, dpi float64) (images [][]byte, err error) {
+	data := (*C.uchar)(C.CBytes(input))
+	output := C.fz_multi_thread_convert_pages_to_png(data, C.size_t(len(input)), C.float(float32(dpi)))
+	println(output.pngBytes)
+	println(output.pageCount)
+	println(output.err)
+	return
 }
 
 // ImagePNG1 returns image for given page number as PNG bytes.
